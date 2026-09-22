@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>High-Accuracy Live Voice Capture & Ultra-Fast Translation</title>
+    <style>
+        :root {
+            --bg-color: #111827;
+            --card-bg: #1f2937;
+            --border-color: #374151;
+            --text-main: #f9fafb;
+            --text-sub: #9ca3af;
+            --accent-color: #3b82f6;
+            --accent-hover: #2563eb;
+            --live-color: #eab308;
+            --error-color: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            padding: 24px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 16px;
+        }
+
+        h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .controls-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        button {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: background 0.2s ease;
+        }
+
+        button:hover {
+            background-color: var(--accent-hover);
+        }
+
+        button.secondary {
+            background-color: #4b5563;
+        }
+
+        button.secondary:hover {
+            background-color: #374151;
+        }
+
+        select {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            border-radius: 6px;
+            outline: none;
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            color: var(--text-sub);
+        }
+
+        .indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #6b7280;
+        }
+
+        .indicator.active {
+            background-color: #10b981;
+            box-shadow: 0 0 8px #10b981;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
+
+        .input-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 80px;
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-main);
+            padding: 12px;
+            resize: vertical;
+            outline: none;
+        }
+
+        .options-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.85rem;
+        }
+
+        .results-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 10px;
+        }
+
+        .text-result {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .detected-lang {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--accent-color);
+            letter-spacing: 0.5px;
+        }
+
+        .source-text {
+            color: var(--text-main);
+            font-size: 0.95rem;
+        }
+
+        .translated-text {
+            color: #60a5fa;
+            font-size: 0.95rem;
+            border-top: 1px solid var(--border-color);
+            padding-top: 8px;
+        }
+
+        .translation-error {
+            color: var(--error-color);
+        }
+
+        #emptyMessage {
+            text-align: center;
+            color: var(--text-sub);
+            padding: 30px;
+            border: 1px dashed var(--border-color);
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Live Voice Capture & Ultra-Fast Translation</h1>
+        <button id="clearAllBtn" class="secondary">Clear All</button>
+    </header>
+
+    <div class="controls-card">
+        <div class="btn-group">
+            <button id="startZhBtn">🇨🇳 Listen Chinese</button>
+            <button id="startEnBtn">🇺🇸 Listen English</button>
+            <button id="teamsAudioBtn">🖥️ System Audio / Mic</button>
+            <select id="teamsLanguage">
+                <option value="zh-CN">Chinese First (zh-CN)</option>
+                <option value="en-US">English First (en-US)</option>
+            </select>
+        </div>
+
+        <div class="status-bar">
+            <div id="listeningIndicator" class="indicator"></div>
+            <span id="status">Ready</span>
+        </div>
+    </div>
+
+    <div class="input-section">
+        <textarea id="inputText" placeholder="Or type text directly here..."></textarea>
+        <div class="btn-group">
+            <button id="translateBtn">Translate Text</button>
+            <button id="clearBtn" class="secondary">Clear Input</button>
+        </div>
+    </div>
+
+    <div class="options-row">
+        <label>
+            <input type="checkbox" id="autoSpeakCheckbox"> Auto-read translation aloud
+        </label>
+    </div>
+
+    <div id="resultContent" class="results-container">
+        <div id="emptyMessage">Voice or text translation results will appear here.</div>
+    </div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   GLOBAL STATE & ACCURACY CONTROLS
+========================================================= */
+let recognition = null;
+let isRunning = false;
+let activeMode = null;
+let activeLangCode = null;
+let currentSession = 0;
+let restartTimeout = null;
+
+let translationQueue = Promise.resolve();
+let speechBuffer = "";
+let speechBufferTimer = null;
+
+let lastFinalText = "";
+let lastFinalTime = 0;
+let processedIndices = new Set(); 
+
+// Buffer delay set to 300ms for fast continuous translation
+const SPEECH_BUFFER_DELAY = 300;
+
+/* =========================================================
+   DOM ELEMENTS
+========================================================= */
+const statusDiv = document.getElementById("status");
+const startZhBtn = document.getElementById("startZhBtn");
+const startEnBtn = document.getElementById("startEnBtn");
+const teamsAudioBtn = document.getElementById("teamsAudioBtn");
+const teamsLanguage = document.getElementById("teamsLanguage");
+const clearAllBtn = document.getElementById("clearAllBtn");
+const resultContent = document.getElementById("resultContent");
+const inputText = document.getElementById("inputText");
+const translateBtn = document.getElementById("translateBtn");
+const clearBtn = document.getElementById("clearBtn");
+const listeningIndicator = document.getElementById("listeningIndicator");
+const autoSpeakCheckbox = document.getElementById("autoSpeakCheckbox");
+
+/* =========================================================
+   ACCURACY & TEXT CLEANING ENGINE
+========================================================= */
+function cleanSpeechText(text) {
+    if (!text) return "";
+    return text
+        .replace(/\u00A0/g, " ")
+        .replace(/[ \t]+/g, " ")
+        .replace(/([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])/g, '$1$2')
+        .replace(/([\u4e00-\u9fa5])\s+([A-Za-z0-9])/g, '$1 $2')
+        .replace(/([A-Za-z0-9])\s+([\u4e00-\u9fa5])/g, '$1 $2')
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+}
+
+function detectLanguage(text) {
+    if (!text || !text.trim()) return "zh";
+    const chineseCount = (text.match(/[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/g) || []).length;
+    const englishCount = (text.match(/[A-Za-zÀ-ÿ]/g) || []).length;
+    return chineseCount >= englishCount ? "zh" : "en";
+}
+
+function normalizeForCompare(text) {
+    return (text || "")
+        .toLowerCase()
+        .replace(/[.,!?;:'"“”‘’。，！？；：、\s]/g, "")
+        .trim();
+}
+
+function isDuplicateSpeech(text) {
+    const now = Date.now();
+    const current = normalizeForCompare(text);
+    const previous = normalizeForCompare(lastFinalText);
+
+    if (!current) return true;
+
+    if (previous && current === previous && (now - lastFinalTime < 1000)) {
+        return true;
+    }
+
+    lastFinalText = text;
+    lastFinalTime = now;
+    return false;
+}
+
+function containsSentenceEnding(text) {
+    return /[.!?。！？；;]\s*$/.test(text);
+}
+
+function splitForTranslation(text, maxLength = 1800) {
+    text = cleanSpeechText(text);
+    if (!text) return [];
+    if (text.length <= maxLength) return [text];
+
+    const sentences = text.match(/[^.!?。！？；;]+[.!?。！？；;]?/g) || [text];
+    const chunks = [];
+    let current = "";
+
+    for (const sentence of sentences) {
+        const part = sentence.trim();
+        if (!part) continue;
+        const candidate = current ? current + " " + part : part;
+        if (candidate.length <= maxLength) {
+            current = candidate;
+        } else {
+            if (current) chunks.push(current);
+            current = part;
+        }
+    }
+    if (current) chunks.push(current);
+    return chunks.filter(Boolean);
+}
+
+/* =========================================================
+   TRANSLATION API ENGINE (MICROSOFT EDGE NATIVE / BING)
+========================================================= */
+async function translateChunk(text, source, target, retries = 2) {
+    // Map language codes to Bing/Azure formats
+    const srcLang = source === "zh" ? "zh-CHS" : "en";
+    const tgtLang = target === "zh" ? "zh-CHS" : "en";
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        let controller = null;
+        let timeoutId = null;
+        try {
+            controller = new AbortController();
+            timeoutId = setTimeout(() => controller.abort(), 5000); // 5-second timeout
+
+            // Step A: Fetch session auth token from Edge internal endpoint
+            const authResponse = await fetch("https://edge.microsoft.com/translate/auth", {
+                method: "POST",
+                signal: controller.signal
+            });
+
+            if (!authResponse.ok) throw new Error("Edge auth token request failed: " + authResponse.status);
+            const token = await authResponse.text();
+
+            // Step B: Send translation request to Microsoft Translator API
+            const transResponse = await fetch(
+                `https://api-edge.cognitive.microsofttranslator.com/translate?api-version=3.0&from=${srcLang}&to=${tgtLang}`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: JSON.stringify([{ "Text": text }]),
+                    signal: controller.signal
+                }
+            );
+
+            clearTimeout(timeoutId);
+
+            if (!transResponse.ok) throw new Error("HTTP " + transResponse.status);
+            const data = await transResponse.json();
+
+            // Step C: Extract translated text
+            if (data && data[0] && data[0].translations && data[0].translations[0]) {
+                const result = data[0].translations[0].text.trim();
+                if (result) return result;
+            }
+            throw new Error("Empty translation");
+
+        } catch (error) {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (attempt === retries) throw error;
+            await new Promise(resolve => setTimeout(resolve, 150 * attempt));
+        }
+    }
+    throw new Error("Edge Native Translation failed");
+}
+
+async function translateText(text, retries = 2) {
+    text = cleanSpeechText(text);
+    if (!text) return { translatedText: "", source: "zh", target: "en", error: false };
+
+    const source = detectLanguage(text);
+    const target = source === "zh" ? "en" : "zh";
+    const chunks = splitForTranslation(text);
+
+    try {
+        const translations = await Promise.all(
+            chunks.map(chunk => translateChunk(chunk, source, target, retries))
+        );
+        return { translatedText: translations.join(" "), source, target, error: false };
+    } catch (error) {
+        console.error("Translation error:", error);
+        return { translatedText: "⚠️ Translation failed. Please try again.", source, target, error: true };
+    }
+}
+
+/* =========================================================
+   BUFFER & QUEUE HANDLING
+========================================================= */
+function addSpeechToBuffer(text, session) {
+    text = cleanSpeechText(text);
+    if (!text || session !== currentSession || isDuplicateSpeech(text)) return;
+
+    if (speechBuffer) {
+        const currentLang = detectLanguage(text);
+        const bufferLang = detectLanguage(speechBuffer);
+        if (currentLang === "en" || bufferLang === "en") {
+            speechBuffer += " ";
+        }
+    }
+    speechBuffer += text;
+
+    clearTimeout(speechBufferTimer);
+    if (containsSentenceEnding(text) || speechBuffer.length >= 35) {
+        flushSpeechBuffer(session);
+    } else {
+        speechBufferTimer = setTimeout(() => flushSpeechBuffer(session), SPEECH_BUFFER_DELAY);
+    }
+}
+
+function flushSpeechBuffer(session) {
+    clearTimeout(speechBufferTimer);
+    speechBufferTimer = null;
+    if (!speechBuffer.trim()) return;
+
+    const text = cleanSpeechText(speechBuffer);
+    speechBuffer = "";
+    if (session !== currentSession) return;
+    queueTranslation(text, session);
+}
+
+function queueTranslation(text, session) {
+    translationQueue = translationQueue.then(async () => {
+        if (session !== currentSession) return;
+        const translation = await translateText(text);
+        if (session !== currentSession) return;
+
+        removeLiveInterim();
+        appendResult(text, translation);
+
+        if (autoSpeakCheckbox.checked && !translation.error && translation.translatedText) {
+            speakText(translation.translatedText, translation.target);
+        }
+    }).catch(error => console.error("Translation queue error:", error));
+}
+
+function speakText(text, language) {
+    if (!("speechSynthesis" in window) || !text) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = language === "zh" ? "zh-CN" : "en-US";
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    window.speechSynthesis.speak(utterance);
+}
+window.speakText = speakText;
+
+/* =========================================================
+   LIVE CAPTURE UI
+========================================================= */
+function updateLiveInterim(text) {
+    const emptyMessage = document.getElementById("emptyMessage");
+    if (emptyMessage) emptyMessage.remove();
+
+    let liveCard = document.getElementById("liveInterimCard");
+    if (!liveCard) {
+        liveCard = document.createElement("div");
+        liveCard.id = "liveInterimCard";
+        liveCard.className = "text-result";
+        liveCard.style.borderLeft = "4px solid #eab308";
+        liveCard.style.opacity = "0.85";
+
+        const header = document.createElement("div");
+        header.className = "detected-lang";
+        header.style.color = "#eab308";
+        header.textContent = "🎙️ SPEAKING LIVE...";
+
+        const body = document.createElement("div");
+        body.id = "liveInterimText";
+        body.className = "source-text";
+
+        liveCard.appendChild(header);
+        liveCard.appendChild(body);
+        resultContent.insertBefore(liveCard, resultContent.firstChild);
+    }
+
+    const textNode = document.getElementById("liveInterimText");
+    if (textNode) textNode.textContent = text;
+}
+
+function removeLiveInterim() {
+    const liveCard = document.getElementById("liveInterimCard");
+    if (liveCard) liveCard.remove();
+}
+
+function appendResult(sourceText, translation) {
+    const emptyMessage = document.getElementById("emptyMessage");
+    if (emptyMessage) emptyMessage.remove();
+
+    const div = document.createElement("div");
+    div.className = "text-result";
+
+    const header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.justifyContent = "space-between";
+    header.style.alignItems = "center";
+
+    const language = document.createElement("div");
+    language.className = "detected-lang";
+    language.textContent = translation.source.toUpperCase() + " ➡️ " + translation.target.toUpperCase();
+
+    const listenButton = document.createElement("button");
+    listenButton.textContent = "🔊 Listen";
+    listenButton.style.padding = "4px 10px";
+    listenButton.style.fontSize = "11px";
+    listenButton.style.background = "#374151";
+    listenButton.style.borderRadius = "4px";
+    listenButton.addEventListener("click", () => speakText(translation.translatedText, translation.target));
+
+    header.appendChild(language);
+    header.appendChild(listenButton);
+
+    const source = document.createElement("div");
+    source.className = "source-text";
+    source.textContent = sourceText;
+
+    const translated = document.createElement("div");
+    translated.className = "translated-text";
+    if (translation.error) translated.classList.add("translation-error");
+    translated.textContent = translation.translatedText;
+
+    div.appendChild(header);
+    div.appendChild(source);
+    div.appendChild(translated);
+
+    resultContent.insertBefore(div, resultContent.firstChild);
+}
+
+function updateButtonStates() {
+    startZhBtn.textContent = "🇨🇳 Listen Chinese";
+    startEnBtn.textContent = "🇺🇸 Listen English";
+    teamsAudioBtn.textContent = "🖥️ System Audio / Mic";
+
+    if (activeMode === "zh") startZhBtn.textContent = "⏹️ Stop Chinese";
+    else if (activeMode === "en") startEnBtn.textContent = "⏹️ Stop English";
+    else if (activeMode === "teams") teamsAudioBtn.textContent = "⏹️ Stop System Audio";
+}
+
+/* =========================================================
+   AUDIO & HIGH-ACCURACY RECOGNITION PIPELINE
+========================================================= */
+function stopTranscription() {
+    isRunning = false;
+    activeMode = null;
+    activeLangCode = null;
+
+    clearTimeout(speechBufferTimer);
+    clearTimeout(restartTimeout);
+    speechBuffer = "";
+    processedIndices.clear();
+    removeLiveInterim();
+
+    if (recognition) {
+        try {
+            recognition.onend = null;
+            recognition.onerror = null;
+            recognition.stop();
+        } catch (e) {}
+        recognition = null;
+    }
+
+    listeningIndicator.classList.remove("active");
+    statusDiv.textContent = "Stopped.";
+    updateButtonStates();
+}
+
+function startTranscription(langCode, isSystemMode = false) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+        statusDiv.textContent = "❌ Speech Recognition is not supported. Use Google Chrome or Microsoft Edge.";
+        return;
+    }
+
+    if (recognition) {
+        try {
+            recognition.onend = null;
+            recognition.onerror = null;
+            recognition.stop();
+        } catch (e) {}
+        recognition = null;
+    }
+
+    if (!isRunning) {
+        currentSession++;
+    }
+
+    const session = currentSession;
+    isRunning = true;
+    activeLangCode = langCode;
+    activeMode = isSystemMode ? "teams" : (langCode === "zh-CN" ? "zh" : "en");
+    processedIndices.clear();
+    updateButtonStates();
+
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 3; 
+    recognition.lang = langCode;
+
+    recognition.onstart = () => {
+        if (session !== currentSession) return;
+        listeningIndicator.classList.add("active");
+        statusDiv.textContent = "🎙️ Listening (" + langCode + ")...";
+    };
+
+    recognition.onresult = (event) => {
+        if (session !== currentSession) return;
+        let interimText = "";
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const result = event.results[i];
+            
+            let bestTranscript = result[0].transcript;
+            if (result.length > 1) {
+                let maxConfidence = result[0].confidence || 0;
+                for (let j = 1; j < result.length; j++) {
+                    if (result[j].confidence > maxConfidence) {
+                        maxConfidence = result[j].confidence;
+                        bestTranscript = result[j].transcript;
+                    }
+                }
+            }
+
+            if (result.isFinal) {
+                if (!processedIndices.has(i)) {
+                    processedIndices.add(i);
+                    removeLiveInterim();
+                    addSpeechToBuffer(bestTranscript, session);
+                }
+            } else {
+                interimText += bestTranscript;
+            }
+        }
+
+        if (interimText.trim() !== "") {
+            updateLiveInterim(cleanSpeechText(interimText));
+        }
+    };
+
+    recognition.onerror = (event) => {
+        console.warn("Speech recognition error:", event.error);
+        if (event.error === "no-speech") return;
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+            stopTranscription();
+            statusDiv.textContent = "❌ Speech recognition permission denied.";
+        }
+    };
+
+    recognition.onend = () => {
+        if (isRunning && session === currentSession) {
+            flushSpeechBuffer(session);
+
+            restartTimeout = setTimeout(() => {
+                if (isRunning && session === currentSession) {
+                    startTranscription(activeLangCode, isSystemMode);
+                }
+            }, 10);
+        } else {
+            listeningIndicator.classList.remove("active");
+            removeLiveInterim();
+        }
+    };
+
+    try {
+        recognition.start();
+    } catch (error) {
+        console.error("Recognition start error:", error);
+        stopTranscription();
+        statusDiv.textContent = "❌ Failed to start speech recognition.";
+    }
+}
+
+/* =========================================================
+   EVENT LISTENERS
+========================================================= */
+startZhBtn.addEventListener("click", () => {
+    if (isRunning && activeMode === "zh") stopTranscription();
+    else startTranscription("zh-CN", false);
+});
+
+startEnBtn.addEventListener("click", () => {
+    if (isRunning && activeMode === "en") stopTranscription();
+    else startTranscription("en-US", false);
+});
+
+teamsAudioBtn.addEventListener("click", () => {
+    if (isRunning && activeMode === "teams") stopTranscription();
+    else startTranscription(teamsLanguage.value, true);
+});
+
+teamsLanguage.addEventListener("change", () => {
+    if (isRunning && activeMode === "teams") startTranscription(teamsLanguage.value, true);
+});
+
+clearAllBtn.addEventListener("click", () => {
+    resultContent.innerHTML = `<div id="emptyMessage">Voice or text translation results will appear here.</div>`;
+    inputText.value = "";
+});
+
+translateBtn.addEventListener("click", async () => {
+    const text = inputText.value;
+    if (!text.trim()) return;
+
+    translateBtn.disabled = true;
+    statusDiv.textContent = "🔄 Translating text...";
+    const translation = await translateText(text);
+    appendResult(text, translation);
+
+    if (autoSpeakCheckbox.checked && !translation.error && translation.translatedText) {
+        speakText(translation.translatedText, translation.target);
+    }
+
+    statusDiv.textContent = "✅ Text translated.";
+    translateBtn.disabled = false;
+});
+
+clearBtn.addEventListener("click", () => { inputText.value = ""; });
+</script>
+
+</body>
+</html>
