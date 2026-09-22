@@ -419,24 +419,30 @@ async function translateChunk(text, source, target, retries = 2) {
     throw new Error("Edge Native Translation failed");
 }
 
-async function translateText(text, retries = 2) {
-    text = cleanSpeechText(text);
-    if (!text) return { translatedText: "", source: "zh", target: "en", error: false };
+async function translateChunk(text, source, target, retries = 2) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            const response = await fetch(
+                `/api/translate?text=${encodeURIComponent(text)}&source=${source}&target=${target}`
+            );
 
-    const source = detectLanguage(text);
-    const target = source === "zh" ? "en" : "zh";
-    const chunks = splitForTranslation(text);
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
 
-    try {
-        const translations = await Promise.all(
-            chunks.map(chunk => translateChunk(chunk, source, target, retries))
-        );
-        return { translatedText: translations.join(" "), source, target, error: false };
-    } catch (error) {
-        console.error("Translation error:", error);
-        return { translatedText: "⚠️ Translation failed. Please try again.", source, target, error: true };
+            const data = await response.json();
+            if (data.translatedText) {
+                return data.translatedText;
+            }
+            throw new Error("Empty translation returned");
+        } catch (error) {
+            if (attempt === retries) throw error;
+            await new Promise(resolve => setTimeout(resolve, 200 * attempt));
+        }
     }
+    throw new Error("Translation failed");
 }
+
 
 /* =========================================================
    BUFFER & QUEUE HANDLING
