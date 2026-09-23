@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Voice Capture & Translation (China Compatible)</title>
+    <title>Live Voice Capture & Translation (Enhanced Audio Processing)</title>
     <style>
         :root {
             --bg-color: #0b0f19;
@@ -16,8 +16,6 @@
             --btn-pink: #be123c;
             --btn-blue: #1d4ed8;
             --btn-dual: #0f766e;
-            
-            /* Terminal-style colors */
             --orange-tag: #d97706;
             --green-target: #4ade80;
             --source-grey: #cbd5e1;
@@ -222,10 +220,11 @@
         }
 
         .indicator {
-            width: 100px;
-            height: 10px;
+            width: 12px;
+            height: 12px;
             border-radius: 50%;
             background-color: #64748b;
+            flex-shrink: 0;
         }
 
         .indicator.active {
@@ -238,6 +237,30 @@
             0% { opacity: 1; }
             50% { opacity: 0.3; }
             100% { opacity: 1; }
+        }
+
+        .audio-meter-container {
+            background: #090d16;
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 8px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .meter-label {
+            font-size: 0.75rem;
+            color: var(--text-sub);
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        canvas#audioVisualizer {
+            width: 100%;
+            height: 24px;
+            background: #111827;
+            border-radius: 4px;
         }
 
         .toggle-row {
@@ -432,6 +455,11 @@
                 <button id="translateManualBtn" class="full-width-btn" style="margin-top: 12px;">Translate Text</button>
             </div>
 
+            <div class="audio-meter-container">
+                <span class="meter-label">Audio Signal Level</span>
+                <canvas id="audioVisualizer"></canvas>
+            </div>
+
             <div class="status-container">
                 <div id="statusIndicator" class="indicator"></div>
                 <span id="statusText">READY & AWAITING INPUT</span>
@@ -491,14 +519,13 @@ function decodeHTMLEntities(text) {
     return txt.value;
 }
 
-// --- Translation Engine with Primary China-Accessible Endpoint ---
+// --- Translation Engine with China-Accessible Primary Endpoint ---
 async function translateText(text, srcLang = "en", tgtLang = "zh") {
     if (!text || !text.trim()) return { translatedText: "" };
 
     const cleanSrc = srcLang === "auto" ? "autodetect" : srcLang;
     const cleanTgt = tgtLang.startsWith("zh") ? "zh" : tgtLang;
 
-    // Primary: MyMemory Translation Engine (Accessible in China)
     try {
         const res = await fetch(
             `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${cleanSrc}|${cleanTgt}`
@@ -508,10 +535,9 @@ async function translateText(text, srcLang = "en", tgtLang = "zh") {
             return { translatedText: decodeHTMLEntities(data.responseData.translatedText) };
         }
     } catch (err) {
-        console.warn("MyMemory API failed, trying fallback:", err);
+        console.warn("MyMemory API failed, falling back:", err);
     }
 
-    // Fallback Endpoint
     try {
         const response = await fetch(
             `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${cleanSrc}&tl=${cleanTgt}&dt=t&q=${encodeURIComponent(text)}`
@@ -522,7 +548,7 @@ async function translateText(text, srcLang = "en", tgtLang = "zh") {
             return { translatedText: decodeHTMLEntities(rawTranslation) };
         }
     } catch (err) {
-        console.error("Secondary Translation API failed:", err);
+        console.error("Fallback Translation API failed:", err);
     }
 
     return { translatedText: decodeHTMLEntities(text) };
@@ -546,7 +572,99 @@ const statusIndicator = document.getElementById("statusIndicator");
 const statusText = document.getElementById("statusText");
 const translateUiBtn = document.getElementById("translateUiBtn");
 
+const visualizerCanvas = document.getElementById("audioVisualizer");
+const canvasCtx = visualizerCanvas.getContext("2d");
+
 let accumulatedSource = "";
+let audioCtx = null;
+let micStream = null;
+let analyser = null;
+let animFrameId = null;
+
+// --- DSP Audio Processing Pipeline for Sharp Audio Capture ---
+async function setupSharpAudioProcessing() {
+    try {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+        }
+
+        micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                channelCount: 1,
+                sampleRate: 48000
+            }
+        });
+
+        const sourceNode = audioCtx.createMediaStreamSource(micStream);
+
+        const highPassFilter = audioCtx.createBiquadFilter();
+        highPassFilter.type = 'highpass';
+        highPassFilter.frequency.setValueAtTime(80, audioCtx.currentTime);
+
+        const compressor = audioCtx.createDynamicsCompressor();
+        compressor.threshold.setValueAtTime(-24, audioCtx.currentTime);
+        compressor.knee.setValueAtTime(30, audioCtx.currentTime);
+        compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
+        compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
+        compressor.release.setValueAtTime(0.25, audioCtx.currentTime);
+
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 64;
+
+        sourceNode.connect(highPassFilter);
+        highPassFilter.connect(compressor);
+        compressor.connect(analyser);
+
+        drawVisualizer();
+    } catch (err) {
+        console.warn("Audio Context / DSP setup optional warning:", err);
+    }
+}
+
+function stopSharpAudioProcessing() {
+    if (animFrameId) cancelAnimationFrame(animFrameId);
+    if (micStream) {
+        micStream.getTracks().forEach(track => track.stop());
+        micStream = null;
+    }
+    if (audioCtx) {
+        audioCtx.close();
+        audioCtx = null;
+    }
+    canvasCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+}
+
+function drawVisualizer() {
+    if (!analyser) return;
+
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    
+    function render() {
+        animFrameId = requestAnimationFrame(render);
+        analyser.getByteFrequencyData(dataArray);
+
+        canvasCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+        
+        let barWidth = (visualizerCanvas.width / bufferLength) * 1.5;
+        let barHeight;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+            barHeight = (dataArray[i] / 255) * visualizerCanvas.height;
+            canvasCtx.fillStyle = '#10b981';
+            canvasCtx.fillRect(x, visualizerCanvas.height - barHeight, barWidth, barHeight);
+            x += barWidth + 2;
+        }
+    }
+    render();
+}
 
 function appendTranslationEntry(srcLangLabel, tgtLangLabel, originalText, translatedText) {
     const entryDiv = document.createElement("div");
@@ -611,7 +729,8 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             const transcript = currentSessionFinal.trim();
             accumulatedSource = fullSourceDisplay;
 
-            const containsChinese = /[\u4e00-\u9fa5]/.test(transcript);
+            // Updated regex for robust Chinese character detection
+            const containsChinese = /[\u4e00-\u9fa5\u3400-\u4dbf\u3000-\u303f]/.test(transcript);
             let srcLang = "en";
             let tgtLang = "zh";
 
@@ -648,7 +767,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     recognition.onerror = (event) => {
         console.error("Speech Recognition Error:", event.error);
         if (event.error === 'network') {
-            statusText.textContent = "NETWORK ERROR (PLEASE USE MICROSOFT EDGE OR SAFARI)";
+            statusText.textContent = "NETWORK ERROR (USE EDGE/SAFARI & CHECK INTERNET)";
         } else {
             statusText.textContent = "ERROR: " + event.error.toUpperCase();
         }
@@ -667,11 +786,12 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
 }
 
 // --- Mode Controls ---
-function setActiveListenMode(mode, button, langCode) {
+async function setActiveListenMode(mode, button, langCode) {
     if (currentListenMode === mode) {
         currentListenMode = null;
         button.classList.remove("active");
         if (recognition) recognition.stop();
+        stopSharpAudioProcessing();
         statusIndicator.classList.remove("active");
         statusText.textContent = "READY & AWAITING INPUT";
         return;
@@ -680,6 +800,8 @@ function setActiveListenMode(mode, button, langCode) {
     [listenZhBtn, listenEnBtn, autoDualBtn].forEach(btn => btn.classList.remove("active"));
     button.classList.add("active");
     currentListenMode = mode;
+
+    await setupSharpAudioProcessing();
 
     if (recognition) {
         recognition.stop();
@@ -692,7 +814,8 @@ function setActiveListenMode(mode, button, langCode) {
 
 listenZhBtn.addEventListener("click", () => setActiveListenMode("zh", listenZhBtn, "zh-CN"));
 listenEnBtn.addEventListener("click", () => setActiveListenMode("en", listenEnBtn, "en-US"));
-autoDualBtn.addEventListener("click", () => setActiveListenMode("dual", autoDualBtn, "en-US"));
+// Fix: Use 'zh-CN' in Dual Mode so the Web Speech engine accurately captures both Chinese and English
+autoDualBtn.addEventListener("click", () => setActiveListenMode("dual", autoDualBtn, "zh-CN"));
 
 tabSpeech.addEventListener("click", () => {
     tabSpeech.classList.add("active");
@@ -711,12 +834,13 @@ tabText.addEventListener("click", () => {
         currentListenMode = null;
         [listenZhBtn, listenEnBtn, autoDualBtn].forEach(btn => btn.classList.remove("active"));
         if (recognition) recognition.stop();
+        stopSharpAudioProcessing();
         statusIndicator.classList.remove("active");
         statusText.textContent = "READY & AWAITING INPUT";
     }
 });
 
-// --- Text Input Translation ---
+// --- Manual Text Input Translation ---
 document.getElementById("translateManualBtn").addEventListener("click", async () => {
     const text = inputText.value.trim();
     if (!text) return;
@@ -726,7 +850,7 @@ document.getElementById("translateManualBtn").addEventListener("click", async ()
     accumulatedSource = (accumulatedSource + " " + text).trim();
     sourceText.textContent = accumulatedSource;
     
-    const isChinese = /[\u4e00-\u9fa5]/.test(text);
+    const isChinese = /[\u4e00-\u9fa5\u3400-\u4dbf\u3000-\u303f]/.test(text);
     const srcLang = isChinese ? "zh" : "en";
     const tgtLang = isChinese ? "en" : "zh";
 
@@ -765,7 +889,7 @@ translateUiBtn.addEventListener("click", () => {
     autoDualBtn.innerHTML = isUiChinese ? "双语自动<br>(中 + 英)" : "Auto Dual<br>(EN + ZH)";
 });
 
-// --- Helper Functions ---
+// --- Speech Output & General Actions ---
 function speakText(text, lang) {
     if (!("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
